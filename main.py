@@ -14,13 +14,22 @@ from project.exctract.extractors import NeoWsExtractor
 
 API_KEY = settings['API_KEY']
 
-def get_session(engine):
+def get_session(engine: sqlalchemy.Engine):
+    """
+        Function which returns session with binded engine
+    """
     return sessionmaker(bind=engine)
 
 SessionFactory = get_session(get_mysql_engine(**settings.database))
 
-def process_file(filename) -> list:
-    
+def process_file(filename: str) -> list[list]:
+    """
+        Functions proccess the file with a given name located in data folder.
+        
+        :param filename: name of json file.
+        
+        :return: nested list with astroid details per date.
+    """
     from project.parser.parser import AsteroidParser
 
     dates, record_sets = extract_data_from_json(filename)
@@ -43,6 +52,9 @@ def process_file(filename) -> list:
              
                     
 def create_asteroids_table() -> bool:
+    """
+        Function creates asteroid table in a given database parameters.
+    """
     engine: sqlalchemy.Engine = get_mysql_engine(**settings.database)
     try:
         with engine.connect() as connection:

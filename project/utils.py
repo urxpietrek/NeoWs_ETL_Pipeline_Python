@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Engine
 from datetime import datetime, timedelta
 from typing import Union, Iterable
 
@@ -9,11 +9,17 @@ import re
 
 JSON_FILE_PATH = os.path.abspath('./data/json_files')
 
-def get_mysql_engine(host: str, user: str, pwd: str, port: int, database: str):
+def get_mysql_engine(host: str, user: str, pwd: str, port: int, database: str) -> Engine:
+    """
+        Function returns mysql engine with a given parameters to uri.
+    """
     connection_uri = f'mysql+pymysql://{user}:{pwd}@{host}:{port}/{database}'
     return create_engine(connection_uri)
 
 def create_filename(start_date: str, end_date: str | None = None) -> str:
+    """
+        Create name based on dates.
+    """
     if end_date is None:
         end_date = (
             datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=7)
@@ -36,7 +42,7 @@ def save_to_json(filename: str, data: requests.Response) -> tuple[bool, str]:
     
     return True, path
 
-def set_date_format(date: Union[str, datetime]) -> str:
+def check_and_set_date_format(date: Union[str, datetime]) -> str:
     # Reformat datetime to str
     if isinstance(date, datetime):
         return  date.strftime('%Y-%m-%d')
@@ -68,7 +74,11 @@ def get_available_files():
     for _, _, files in os.walk(JSON_FILE_PATH):
         print(*files)
     
-def extract_data_from_json(filename: str): 
+def extract_data_from_json(filename: str):
+    """
+        Function which extract data from json_file.
+    """
+    
     filepath = os.path.join(JSON_FILE_PATH, filename)
     data = read_json_file(filepath)
     
@@ -76,6 +86,9 @@ def extract_data_from_json(filename: str):
         return None, None
     
     datasets = data.get('near_earth_objects', {})
+    if not datasets:
+        return None, None
+    
     dates, details = list(datasets.keys()), list(datasets.values())
     
     return dates, details
