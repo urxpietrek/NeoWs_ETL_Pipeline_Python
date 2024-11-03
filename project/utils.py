@@ -1,21 +1,28 @@
-from sqlalchemy import create_engine, Engine
+from sqlalchemy import create_engine, Engine, MetaData
 from datetime import datetime, timedelta
-from typing import Union, Iterable
+from typing import Union
 
 import requests
+import logging
 import json
 import os
 import re
 
 JSON_FILE_PATH = os.path.abspath('./data/json_files')
 
-def get_mysql_engine(host: str, user: str, pwd: str, port: int, database: str) -> Engine:
+logging.basicConfig(filename = 'sample.log', level=logging.INFO,
+                    format='%(asctime)s %(levelname)s - %(message)s',
+                    datefmt='%H:%M:%S')
+
+logger = logging.getLogger(__name__)
+
+def get_mysql_engine(host: str, user: str, password: str, port: int, database: str) -> Engine:
     """
         Function returns mysql engine with a given parameters to uri.
     """
-    connection_uri = f'mysql+pymysql://{user}:{pwd}@{host}:{port}/{database}'
+    connection_uri = f'mysql+pymysql://{user}:{password}@{host}:{port}/{database}'
     return create_engine(connection_uri)
-
+    
 def create_filename(start_date: str, end_date: str | None = None) -> str:
     """
         Create name based on dates.
@@ -92,5 +99,10 @@ def extract_data_from_json(filename: str):
     dates, details = list(datasets.keys()), list(datasets.values())
     
     return dates, details
+
+def add_days_to_date(date: str, days = 7):
+    fmt = '%Y-%m-%d'
+    formatted_date = datetime.strptime(date, fmt)    
     
+    return (formatted_date + timedelta(days=7)).strftime(fmt)
     

@@ -1,12 +1,24 @@
 import sqlalchemy
 import sqlalchemy.exc
 from sqlalchemy.orm import sessionmaker
+import pymysql as db
+
 from config import settings
 from project.utils import (
     extract_data_from_json,
     get_available_files,
-    get_mysql_engine
+    get_mysql_engine,
+    add_days_to_date
 )
+
+from project.database import (
+    database_exists,
+    table_exists,
+    create_database
+)
+
+from project.utils import logger
+
 import constants.queries as const
 
 from project.arguments import parse_arguments
@@ -20,6 +32,7 @@ def get_session(engine: sqlalchemy.Engine):
     """
     return sessionmaker(bind=engine)
 
+    
 SessionFactory = get_session(get_mysql_engine(**settings.database))
 
 def process_file(filename: str) -> list[list]:
@@ -34,6 +47,7 @@ def process_file(filename: str) -> list[list]:
 
     dates, record_sets = extract_data_from_json(filename)
     if not (dates or record_sets):
+        logger.warning(f'No data found in file `{filename}`')
         return []
 
     aggregated_records = []
@@ -46,7 +60,8 @@ def process_file(filename: str) -> list[list]:
                 parsed_records = [parsed_record for parsed_record in parser]
                 aggregated_records.extend(parsed_records)
             except Exception as e:
-                continue  # Consider logging this exception in production code
+                logger.error(f'Failed to parse record {record}: {e}')
+                continue 
 
     return aggregated_records
              
@@ -56,56 +71,110 @@ def create_asteroids_table() -> bool:
         Function creates asteroid table in a given database parameters.
     """
     engine: sqlalchemy.Engine = get_mysql_engine(**settings.database)
+    table_name = 'asteroids_details'
+    db_name = settings.database['database']
     try:
-        with engine.connect() as connection:
-            with connection.begin() as trans:
-                connection.execute(sqlalchemy.text(
-                                    const.CREATE_ASTEROIDS_OBSERVATIONS_TABLE)
-                                    )
-                
-                trans.commit()
-                print('Tabela utworzona')
-                return True
+        # Firstly create database
+        with db.connect(**settings.database) as connection:
+            if not database_exists(connection, db_name):
+                create_database(settings.database)
+            else:
+                logger.info(f'Database `{db_name}` already exists. Skip creating.')
+        
+        if not table_exists(engine, table_name):
+            with engine.connect() as connection:
+                with connection.begin() as trans:
+                    # Then create table `asteroid_details`
+                    connection.execute(sqlalchemy.text(
+                                        const.CREATE_ASTEROIDS_OBSERVATIONS_TABLE)
+                                        )
+                    trans.commit()
+                    logger.info(f'Table `{table_name}` created succesfully.')
+                    return True
+        else:
+            logger.info(f'Table `{table_name}` already exists. Skip creating.')
                 
     except sqlalchemy.exc.SQLAlchemyError as e:
         print(f"Database error: {e}")
         if 'trans' in locals():
             trans.rollback()
-            return False
+        return False
+    finally:
+        engine.dispose()
 
+def simple_extract():
+    """
+    Function for simple extraction from NeoWs API based on provided arguments.
+    """
+    start_date, end_date = args.extract.split(' ') if len(args.extract.split(' ')) > 1 else (args.extract, None)
+    extractor = NeoWsExtractor(API_KEY)
+    extraction_result = extractor.extract(start_date, end_date)
+    print(extraction_result)
+    
+def simple_read_file():
+    """
+    Function to read and process a file, inserting its content into the database.
+    """
+    try:
+        from project.model import TargetData
+    except ImportError:
+        return
+
+    file_path = args.read_file
+    records = process_file(file_path)
+
+    if records:
+        try:
+            with SessionFactory() as session:
+                session.bulk_insert_mappings(TargetData, records)
+                session.commit()
+                print('Data inserted successfully')
+        except sqlalchemy.exc.SQLAlchemyError as error:
+            print(f'Error during data insertion: {error}')
+            session.rollback()
+        finally:
+            session.close()
+            
+def make_pipeline():
+    start_date, end_date = args.pipeline.split(' ') if len(args.pipeline.split(' ')) > 1 else (args.pipeline, None)
+    extractor = NeoWsExtractor(API_KEY)
+    extraction_result = extractor.extract(start_date, end_date)
+    
+    try:
+        from project.model import TargetData
+    except ImportError:
+        return
+
+    if end_date is None:
+        end_date = add_days_to_date(start_date)
+    
+    file_path = '_'.join(['NeoWs_json', start_date, end_date]) + '.json'
+    records = process_file(file_path)
+
+    if records:
+        try:
+            with SessionFactory() as session:
+                session.bulk_insert_mappings(TargetData, records)
+                session.commit()
+                print('Data inserted successfully')
+        except sqlalchemy.exc.SQLAlchemyError as error:
+            print(f'Error during data insertion: {error}')
+            session.rollback()
+        finally:
+            session.close()
 
 def main(args) -> None:
     if args.extract:
-        start_date, end_date = args.extract if len(args.extract) else (args.extract, None)
-        extractor = NeoWsExtractor(API_KEY)
-        extraction_result = extractor.extract(start_date, end_date)
-        print(extraction_result)
+        simple_extract()
 
     if args.read_file:
-        try:
-            from project.model import TargetData
-        except ImportError:
-            return
-
-        file_path = args.read_file
-        records = process_file(file_path)
-
-        if records:
-            try:
-                from sqlalchemy.dialects.mysql import insert
-                with SessionFactory() as session:
-                    session.bulk_insert_mappings(TargetData, records)
-                    session.commit()
-                    print('Data inserted successfully')
-            except sqlalchemy.exc.SQLAlchemyError as error:
-                print(f'Error during data insertion: {error}')
-                session.rollback()
-            finally:
-                session.close()
+        simple_read_file()
 
     if args.create:
         create_asteroids_table()
                 
+    if args.pipeline:
+        make_pipeline()
                 
 if __name__ == '__main__':
     args = parse_arguments()

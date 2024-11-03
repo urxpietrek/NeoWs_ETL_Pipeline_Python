@@ -20,6 +20,13 @@ def parse_arguments(*args):
     parser.add_argument(
         '-e', '--extract',
         type=str,
-        help='Specify the start and end extraction dates (\'Splitted with blank space\')')
+        help='Specify the start and end extraction dates (\'Splitted with blank space\')'
+    )
+    
+    parser.add_argument(
+        '-pipe', '--pipeline',
+        type=str,
+        help='Specify the start and end extraction dates (\'Splitted with blank space\')'
+    )
     
     return parser.parse_args()

@@ -5,7 +5,7 @@ from datetime import datetime
 from project.utils import (
     create_filename,
     save_to_json,
-    set_date_format
+    check_and_set_date_format
 )
 
 import requests
@@ -53,8 +53,8 @@ class NeoWsExtractor(Extractor):
         if self._api_key is None:
             raise ValueError('Set API_KEY to have access to NASA datasets.')
         
-        start_date = set_date_format(start_date)
-        end_date = set_date_format(end_date) if end_date else None
+        start_date = check_and_set_date_format(start_date)
+        end_date = check_and_set_date_format(end_date) if end_date else None
         
         params = dict(
             api_key=self._api_key,
