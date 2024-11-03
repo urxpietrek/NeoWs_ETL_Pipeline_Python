@@ -100,9 +100,9 @@ def extract_data_from_json(filename: str):
     
     return dates, details
 
-def add_days_to_date(date: str, days = 7):
+def add_days_to_date(date: str, days: int = 7):
     fmt = '%Y-%m-%d'
     formatted_date = datetime.strptime(date, fmt)    
     
-    return (formatted_date + timedelta(days=7)).strftime(fmt)
+    return (formatted_date + timedelta(days=days)).strftime(fmt)
     
