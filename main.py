@@ -4,11 +4,13 @@ from sqlalchemy.orm import sessionmaker
 import pymysql as db
 
 from config import settings
+
+from project import NeoWsExtractor, Pipeline
+from project.arguments import parse_arguments
+from project.utils import logger
 from project.utils import (
-    extract_data_from_json,
-    get_available_files,
     get_mysql_engine,
-    add_days_to_date
+    process_file
 )
 
 from project.database import (
@@ -17,12 +19,7 @@ from project.database import (
     create_database
 )
 
-from project.utils import logger
-
 import constants.queries as const
-
-from project.arguments import parse_arguments
-from project.exctract.extractors import NeoWsExtractor
 
 API_KEY = settings['API_KEY']
 
@@ -32,39 +29,8 @@ def get_session(engine: sqlalchemy.Engine):
     """
     return sessionmaker(bind=engine)
 
-    
 SessionFactory = get_session(get_mysql_engine(**settings.database))
 
-def process_file(filename: str) -> list[list]:
-    """
-        Functions proccess the file with a given name located in data folder.
-        
-        :param filename: name of json file.
-        
-        :return: nested list with astroid details per date.
-    """
-    from project.parser.parser import AsteroidParser
-
-    dates, record_sets = extract_data_from_json(filename)
-    if not (dates or record_sets):
-        logger.warning(f'No data found in file `{filename}`')
-        return []
-
-    aggregated_records = []
-    parser = AsteroidParser([])
-
-    for record_set in record_sets:
-        for record in record_set:
-            try:
-                parser.records = record
-                parsed_records = [parsed_record for parsed_record in parser]
-                aggregated_records.extend(parsed_records)
-            except Exception as e:
-                logger.error(f'Failed to parse record {record}: {e}')
-                continue 
-
-    return aggregated_records
-             
                     
 def create_asteroids_table() -> bool:
     """
@@ -106,10 +72,14 @@ def simple_extract():
     """
     Function for simple extraction from NeoWs API based on provided arguments.
     """
-    start_date, end_date = args.extract.split(' ') if len(args.extract.split(' ')) > 1 else (args.extract, None)
-    extractor = NeoWsExtractor(API_KEY)
-    extraction_result = extractor.extract(start_date, end_date)
-    print(extraction_result)
+    try:
+        start_date, end_date = args.extract.split(' ') if len(args.extract.split(' ')) > 1 else (args.extract, None)
+        extractor = NeoWsExtractor(API_KEY)
+        extraction_result = extractor.extract(start_date, end_date)
+        logger.info('Data extraction completed successfully.')
+        print(extraction_result)
+    except Exception as e:
+        logger.error(f'Error during extraction: {e}')
     
 def simple_read_file():
     """
@@ -135,34 +105,18 @@ def simple_read_file():
         finally:
             session.close()
             
-def make_pipeline():
-    start_date, end_date = args.pipeline.split(' ') if len(args.pipeline.split(' ')) > 1 else (args.pipeline, None)
-    extractor = NeoWsExtractor(API_KEY)
-    extraction_result = extractor.extract(start_date, end_date)
-    
+def do_pipeline():
+    pipeline = Pipeline(API_KEY)
     try:
-        from project.model import TargetData
-    except ImportError:
-        return
-
-    if end_date is None:
-        end_date = add_days_to_date(start_date)
-    
-    file_path = '_'.join(['NeoWs_json', start_date, end_date]) + '.json'
-    records = process_file(file_path)
-
-    if records:
-        try:
-            with SessionFactory() as session:
-                session.bulk_insert_mappings(TargetData, records)
-                session.commit()
-                print('Data inserted successfully')
-        except sqlalchemy.exc.SQLAlchemyError as error:
-            print(f'Error during data insertion: {error}')
-            session.rollback()
-        finally:
-            session.close()
-
+        start_date, end_date = (args.pipeline.split(' ')
+                            if len(args.pipeline.split(' ')) > 1
+                            else (args.pipeline, None))
+        
+        pipeline.do_pipeline(SessionFactory, start_date, end_date)
+        logger.info('Pipeline execution completed successfully.')
+    except Exception as e:
+        logger.error(f'Pipeline execution failed: {e}')
+        
 def main(args) -> None:
     if args.extract:
         simple_extract()
@@ -174,7 +128,7 @@ def main(args) -> None:
         create_asteroids_table()
                 
     if args.pipeline:
-        make_pipeline()
+        do_pipeline()
                 
 if __name__ == '__main__':
     args = parse_arguments()

@@ -105,4 +105,33 @@ def add_days_to_date(date: str, days: int = 7):
     formatted_date = datetime.strptime(date, fmt)    
     
     return (formatted_date + timedelta(days=days)).strftime(fmt)
-    
+
+def process_file(filename: str) -> list[list]:
+    """
+        Functions proccess the file with a given name located in data folder.
+        
+        :param filename: name of json file.
+        
+        :return: nested list with astroid details per date.
+    """
+    from project.parser.parser import AsteroidParser
+
+    dates, record_sets = extract_data_from_json(filename)
+    if not (dates or record_sets):
+        logger.warning(f'No data found in file `{filename}`')
+        return []
+
+    aggregated_records = []
+    parser = AsteroidParser([])
+
+    for record_set in record_sets:
+        for record in record_set:
+            try:
+                parser.records = record
+                parsed_records = [parsed_record for parsed_record in parser]
+                aggregated_records.extend(parsed_records)
+            except Exception as e:
+                logger.error(f'Failed to parse record {record}: {e}')
+                continue 
+
+    return aggregated_records
